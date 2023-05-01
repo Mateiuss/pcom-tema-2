@@ -28,8 +28,6 @@
 using namespace std;
 
 struct udp_msg {
-  uint32_t ip;
-  uint16_t port;
   char topic[50];
   char tip_date;
   union continut {

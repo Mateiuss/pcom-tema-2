@@ -105,7 +105,14 @@ void run_server() {
           close(newsockfd);
         }
       } else if (poll_fds[i].fd == udp_sock) { // Message from an UDP client
-        
+        char buffer[2000];
+
+        rc = recv(poll_fds[i].fd, buffer, 2000, 0);
+
+        udp_msg* msg = (udp_msg*)buffer;
+
+        cout<<"UDP message received: "<<msg->topic<<" "<<(int)msg->tip_date<<" "<<msg->payload.d<<endl;
+
       } else { // Message from a TCP client
         char buf[200];
         rc = recv(poll_fds[i].fd, buf, 200, 0);
@@ -127,6 +134,31 @@ void run_server() {
           num_clients--;
 
           printf("Client %s disconnected.\n", id);
+        } else if (strncmp(buf, "subscribe", 9) == 0) {
+          char topic[50];
+          int sf;
+
+          sscanf(buf, "%*s %s %d", topic, &sf);
+
+          for (auto j = clients.begin(); j != clients.end(); j++) {
+            if (j->second.fd == poll_fds[i].fd) {
+              clients[j->first].topics[topic] = sf;
+              break;
+            }
+          }
+        } else if (strncmp(buf, "unsubscribe", 11) == 0) {
+          char topic[50];
+
+          sscanf(buf, "%*s %s", topic);
+
+          for (auto j = clients.begin(); j != clients.end(); j++) {
+            if (j->second.fd == poll_fds[i].fd) {
+              clients[j->first].topics.erase(topic);
+              break;
+            }
+          }
+        } else {
+          printf("%s\n", buf);
         }
       }
     }
