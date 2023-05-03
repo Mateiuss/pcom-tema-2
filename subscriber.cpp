@@ -7,9 +7,9 @@ uint16_t port;
 char id[11];
 
 void run_client() {
-    send(sockfd, id, strlen(id), 0);
+    send(sockfd, id, strlen(id) + 1, 0);
 
-    char buf[200];
+    char buf[2000];
 
     int rc;
 
@@ -28,24 +28,70 @@ void run_client() {
         for (int i = 0; i < 2; i++) {
             if (!(poll_fds[i].revents & POLLIN)) continue;
 
-            if (poll_fds[i].fd == sockfd) {
-                rc = recv(sockfd, buf, 2000, 0);
+            if (poll_fds[i].fd == sockfd) { // Received something from the server
+                tcp_packet packet;
 
-                // TODO: receive messages from server
+                recv_all(sockfd, &packet, sizeof(tcp_packet));
 
-                if (rc == 0) {
-                    return;
+                printf("%s:%d - %s - ", inet_ntoa(packet.udp_client.sin_addr), packet.udp_client.sin_port, packet.payload.topic);
+                
+                if (packet.payload.tip_date == 0) {
+                    cout << "INT - ";
+                    if (packet.payload.payload[0] == 1) {
+                        cout << "-";
+                    }
+                    cout << ntohl(*((uint32_t*)(packet.payload.payload + 1))) << "\n";
+                } else if (packet.payload.tip_date == 1) {
+                    cout << "SHORT_REAL - " << fixed << setprecision(2) << (float)ntohs(*((uint16_t*)packet.payload.payload)) / 100 << "\n";
+                } else if (packet.payload.tip_date == 2) {
+                    cout << "FLOAT - ";
+                    if (packet.payload.payload[0] == 1) {
+                        cout << "-";
+                    }
+                    uint32_t val = ntohl(*((uint32_t*)(packet.payload.payload + 1)));
+                    uint8_t exp = packet.payload.payload[5];
+
+                    char val_str[10];
+                    sprintf(val_str, "%d", val);
+                    int len = strlen(val_str);
+                    int pos = len - exp;
+
+                    if (pos <= 0) {
+                        cout << "0.";
+                        for (int i = 0; i < -pos; i++) {
+                            cout << "0";
+                        }
+                        cout << val_str;
+                    } else {
+                        for (int i = 0; i < pos; i++) {
+                            cout << val_str[i];
+                        }
+                        cout << ".";
+                        for (int i = pos; i < len; i++) {
+                            cout << val_str[i];
+                        }
+                    }
+                    cout << "\n";
+                } else if (packet.payload.tip_date == 3) {
+                    cout << "STRING - " << packet.payload.payload << "\n";
                 }
-            } else {
-                cin.getline(buf, 2000);
+            } else { // Received something from STDIN
+                char msg[1024];
+                cin.getline(msg, 1024);
 
-                send(sockfd, buf, strlen(buf), 0);
+                notify_packet packet;
+                packet.len = strlen(msg) + 1;
+                strcpy(packet.message, msg);
 
-                if (strncmp(buf, "exit", 4) == 0) {
+                send_all(sockfd, &packet, sizeof(notify_packet));
+
+                // cout<<packet.len<<" "<<packet.message<<"\n";
+
+                if (strncmp(msg, "exit", 4) == 0) {
                     return;
-                } else if (strncmp(buf, "subscribe", 9) == 0) {
+                } else if (strncmp(msg, "subscribe", 9) == 0) {
                     cout << "Subscribed to topic.\n";
-                } else if (strncmp(buf, "unsubscribe", 11) == 0) {
+                } else if (strncmp(msg, "unsubscribe", 11) == 0) {
                     cout << "Unsubscribed from topic.\n";
                 }
             }
@@ -61,11 +107,11 @@ int main(int argc, char *argv[]) {
 
     int rc;
 
+    // Disabling buffering for stdout
     setvbuf(stdout, NULL, _IONBF, BUFSIZ);
     
     // ID
-    rc = sscanf(argv[1], "%s", id);
-    DIE(rc != 1, "Given ID is invalid");
+    strcpy(id, argv[1]);
 
     // PORT
     rc = sscanf(argv[3], "%hu", &port);
@@ -74,6 +120,10 @@ int main(int argc, char *argv[]) {
     // Creating the socket
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     DIE(sockfd < 0, "socket");
+
+    int enable = 1;
+    if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &enable, sizeof(int)) < 0)
+    perror("setsockopt(TCP_NODELAY) failed");
 
     // Server address
     sockaddr_in serv_addr;

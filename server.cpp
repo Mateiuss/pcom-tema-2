@@ -9,25 +9,6 @@ int listen_sock;
 
 map<string, client> clients;
 
-int recv_all(int sockfd, void *buffer, size_t len) {
-
-  size_t bytes_received = 0;
-  size_t bytes_remaining = len;
-  char *buff = (char*)buffer;
-  
-  while (bytes_remaining) {
-    int rc = recv(sockfd, buff + bytes_received, bytes_remaining, 0);
-    DIE(rc < 0, "recv");
-
-    if (rc == 0) break;
-
-    bytes_received += rc;
-    bytes_remaining -= rc;
-  }
-
-  return bytes_received;
-}
-
 void run_server() {
   vector<pollfd> poll_fds;
   int num_clients = 3;
@@ -106,19 +87,57 @@ void run_server() {
         }
       } else if (poll_fds[i].fd == udp_sock) { // Message from an UDP client
         char buffer[2000];
+        memset(buffer, 0, 2000);
 
+        sockaddr_in udp_client;
+        socklen_t udp_len = sizeof(udp_client);
+
+        // rc = recvfrom(udp_sock, buffer, 2000, 0, (sockaddr*)&udp_client, (socklen_t*)&udp_len);
         rc = recv(poll_fds[i].fd, buffer, 2000, 0);
+        DIE(rc < 0, "recvfrom");
 
-        udp_msg* msg = (udp_msg*)buffer;
+        // if (rc == 0) continue;
 
-        cout<<"UDP message received: "<<msg->topic<<" "<<(int)msg->tip_date<<" "<<msg->payload.d<<endl;
+        udp_payload *msg = (udp_payload*)buffer;
 
+        tcp_packet tcp_msg;
+        // memcpy(&tcp_msg.udp_client, &udp_client, sizeof(udp_client));
+        memcpy(&tcp_msg.payload, msg, sizeof(udp_payload));
+
+        char topic[50];
+        strcpy(topic, buffer);
+
+        // cout << "=================================================\n";
+        // for (auto c : clients) {
+        //   for (auto t : c.second.topics) {
+        //     cout << t.first << " " << t.second << "\n";
+        //   }
+        // }
+        // cout << "=================================================\n";
+
+        for (auto j = clients.begin(); j != clients.end(); j++) {
+          map<string, bool>::iterator is_topic = j->second.topics.find(topic);
+
+          if (is_topic == j->second.topics.end()) continue;
+
+          if (j->second.fd == -1) {
+            if (is_topic->second == false) {
+              continue;
+            }
+
+            j->second.sf_queue.push(tcp_msg);
+          } else {
+            // send(j->second.fd, &tcp_msg, sizeof(tcp_msg), 0);
+            send_all(j->second.fd, &tcp_msg, sizeof(tcp_msg));
+          }
+        }
       } else { // Message from a TCP client
-        char buf[200];
-        rc = recv(poll_fds[i].fd, buf, 200, 0);
-        DIE(rc < 0, "recv");
+        notify_packet msg;
+        recv_all(poll_fds[i].fd, &msg, sizeof(msg));
 
-        if (strncmp(buf, "exit", 4) == 0) {
+        // cout << msg.len << " " << msg.message << "\n";
+
+        if (strncmp(msg.message, "exit", 4) == 0) {
           const char *id;
 
           for (auto client : clients) {
@@ -134,11 +153,13 @@ void run_server() {
           num_clients--;
 
           printf("Client %s disconnected.\n", id);
-        } else if (strncmp(buf, "subscribe", 9) == 0) {
+        } else if (strncmp(msg.message, "subscribe", 9) == 0) {
           char topic[50];
           int sf;
 
-          sscanf(buf, "%*s %s %d", topic, &sf);
+          // cout<<topic<<" "<<sf<<"\n";
+
+          sscanf(msg.message, "%*s %s %d", topic, &sf);
 
           for (auto j = clients.begin(); j != clients.end(); j++) {
             if (j->second.fd == poll_fds[i].fd) {
@@ -146,10 +167,10 @@ void run_server() {
               break;
             }
           }
-        } else if (strncmp(buf, "unsubscribe", 11) == 0) {
+        } else if (strncmp(msg.message, "unsubscribe", 11) == 0) {
           char topic[50];
 
-          sscanf(buf, "%*s %s", topic);
+          sscanf(msg.message, "%*s %s", topic);
 
           for (auto j = clients.begin(); j != clients.end(); j++) {
             if (j->second.fd == poll_fds[i].fd) {
@@ -157,8 +178,6 @@ void run_server() {
               break;
             }
           }
-        } else {
-          printf("%s\n", buf);
         }
       }
     }
@@ -179,6 +198,7 @@ int main(int argc, char *argv[]) {
 
   int rc;
 
+  // Disable stdout buffering
   setvbuf(stdout, NULL, _IONBF, BUFSIZ);
 
   // Take de port from the arguments
@@ -207,6 +227,10 @@ int main(int argc, char *argv[]) {
   int enable = 1;
   if (setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
     perror("setsockopt(SO_REUSEADDR) failed");
+
+  // Disable Nagle's algorithm
+  if (setsockopt(listen_sock, IPPROTO_TCP, TCP_NODELAY, &enable, sizeof(int)) < 0)
+    perror("setsockopt(TCP_NODELAY) failed");
 
   // Bind the tcp socket
   rc = bind(listen_sock, (const sockaddr*)&serveraddr, sizeof(serveraddr));

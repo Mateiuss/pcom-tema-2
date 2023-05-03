@@ -1,7 +1,9 @@
+#pragma once
 #include <iostream>
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,8 +15,10 @@
 #include <vector>
 #include <map>
 #include <queue>
+#include <iomanip>
+#include <cmath>
 
-#define MAX_FDS 100
+#define MAX_FDS 2000
 
 #define DIE(assertion, call_description)                                       \
   do {                                                                         \
@@ -27,30 +31,28 @@
 
 using namespace std;
 
-struct udp_msg {
+struct udp_payload {
   char topic[50];
-  char tip_date;
-  union continut {
-    struct zero {
-      char semn;
-      uint32_t numar;
-    } a;
+  uint8_t tip_date;
+  char payload[1500];
+};
 
-    uint16_t b;
+struct tcp_packet {
+  sockaddr_in udp_client;
+  udp_payload payload;
+};
 
-    struct doi {
-      char semn;
-      uint32_t numar;
-      uint8_t negpow;
-    } c;
-
-    char d[1500];
-  } payload;
+struct notify_packet {
+  uint16_t len;
+  char message[1024];
 };
 
 struct client {
   char id[11];
   int fd;
   map<string, bool> topics;
-  queue<udp_msg> sf_queue;
+  queue<tcp_packet> sf_queue;
 };
+
+int recv_all(int sockfd, void *buffer, size_t len);
+int send_all(int sockfd, void *buffer, size_t len);
