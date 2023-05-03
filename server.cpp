@@ -136,7 +136,7 @@ void run_server() {
 
           printf("Client %s disconnected.\n", id);
         } else if (strncmp(msg.message, "subscribe", 9) == 0) { // subscribe command
-          char topic[50];
+          char topic[TOPIC_LEN];
           int sf;
 
           // Extracting the topic and the SF
@@ -150,7 +150,7 @@ void run_server() {
             }
           }
         } else if (strncmp(msg.message, "unsubscribe", 11) == 0) { // unsubscribe command
-          char topic[50];
+          char topic[TOPIC_LEN];
 
           // Extracting the topic
           sscanf(msg.message, "%*s %s", topic);
