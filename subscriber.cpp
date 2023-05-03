@@ -9,8 +9,6 @@ char id[11];
 void run_client() {
     send(sockfd, id, strlen(id) + 1, 0);
 
-    char buf[2000];
-
     int rc;
 
     pollfd poll_fds[2];
@@ -83,22 +81,18 @@ void run_client() {
                     cout << "STRING - " << packet.payload.payload << "\n";
                 }
             } else { // Received something from STDIN
-                char msg[1024];
-                cin.getline(msg, 1024);
-
                 notify_packet packet;
-                packet.len = strlen(msg) + 1;
-                strcpy(packet.message, msg);
+
+                cin.getline(packet.message, MAX_MSG_LEN);
+                packet.len = strlen(packet.message) + 1;
 
                 send_all(sockfd, &packet, sizeof(notify_packet));
 
-                // cout<<packet.len<<" "<<packet.message<<"\n";
-
-                if (strncmp(msg, "exit", 4) == 0) {
+                if (strncmp(packet.message, "exit", 4) == 0) {
                     return;
-                } else if (strncmp(msg, "subscribe", 9) == 0) {
+                } else if (strncmp(packet.message, "subscribe", 9) == 0) {
                     cout << "Subscribed to topic.\n";
-                } else if (strncmp(msg, "unsubscribe", 11) == 0) {
+                } else if (strncmp(packet.message, "unsubscribe", 11) == 0) {
                     cout << "Unsubscribed from topic.\n";
                 }
             }

@@ -91,8 +91,6 @@ void run_server() {
         } else {
           printf("Client %s already connected.\n", id);
 
-          send(newsockfd, "exit", 0, 0);
-
           close(newsockfd);
         }
       } else if (poll_fds[i].fd == udp_sock) { // Message from an UDP client
@@ -125,7 +123,6 @@ void run_server() {
 
             j->second.sf_queue.push(tcp_msg);
           } else {
-            // send(j->second.fd, &tcp_msg, sizeof(tcp_msg), 0);
             send_all(j->second.fd, &tcp_msg, sizeof(tcp_msg));
           }
         }
@@ -133,7 +130,7 @@ void run_server() {
         notify_packet msg;
         recv_all(poll_fds[i].fd, &msg, sizeof(msg));
 
-        if (strncmp(msg.message, "exit", 4) == 0) {
+        if (strncmp(msg.message, "exit", 4) == 0) { // exit command
           const char *id;
 
           for (auto client : clients) {
@@ -149,7 +146,7 @@ void run_server() {
           num_clients--;
 
           printf("Client %s disconnected.\n", id);
-        } else if (strncmp(msg.message, "subscribe", 9) == 0) {
+        } else if (strncmp(msg.message, "subscribe", 9) == 0) { // subscribe command
           char topic[50];
           int sf;
 
@@ -161,7 +158,7 @@ void run_server() {
               break;
             }
           }
-        } else if (strncmp(msg.message, "unsubscribe", 11) == 0) {
+        } else if (strncmp(msg.message, "unsubscribe", 11) == 0) { // unsubscribe command
           char topic[50];
 
           sscanf(msg.message, "%*s %s", topic);

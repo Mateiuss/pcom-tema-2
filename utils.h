@@ -19,6 +19,7 @@
 #include <cmath>
 
 #define MAX_FDS 2000
+#define MAX_MSG_LEN 64
 
 #define DIE(assertion, call_description)                                       \
   do {                                                                         \
@@ -44,7 +45,7 @@ struct tcp_packet {
 
 struct notify_packet {
   uint16_t len;
-  char message[1024];
+  char message[MAX_MSG_LEN];
 };
 
 struct client {
