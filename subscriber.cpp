@@ -7,10 +7,12 @@ uint16_t port;
 char id[11];
 
 void run_client() {
-    send(sockfd, id, strlen(id) + 1, 0);
+    // Sending the client's ID
+    send_all(sockfd, id, 11);
 
     int rc;
 
+    // Adding the socket and STDIN to the poll
     pollfd poll_fds[2];
 
     poll_fds[0].fd = sockfd;
@@ -18,8 +20,6 @@ void run_client() {
 
     poll_fds[1].fd = STDIN_FILENO;
     poll_fds[1].events = POLLIN;
-
-    bool exit_client = false;
 
     while (1) {
         rc = poll(poll_fds, 2, -1);
@@ -33,10 +33,7 @@ void run_client() {
 
                 rc = recv_all(sockfd, &packet, sizeof(tcp_packet));
 
-                if (rc == 0) {
-                    exit_client = true;
-                    break;
-                }
+                if (rc == 0) return;
 
                 printf("%s:%d - %s - ", inet_ntoa(packet.udp_client.sin_addr), packet.udp_client.sin_port, packet.payload.topic);
                 
@@ -57,17 +54,22 @@ void run_client() {
                     uint8_t exp = packet.payload.payload[5];
 
                     char val_str[10];
+
+                    // Converting the value to a string
                     sprintf(val_str, "%d", val);
+
                     int len = strlen(val_str);
+
+                    // The position of the decimal point
                     int pos = len - exp;
 
-                    if (pos <= 0) {
+                    if (pos <= 0) { // The decimal point is before the first digit
                         cout << "0.";
                         for (int i = 0; i < -pos; i++) {
                             cout << "0";
                         }
                         cout << val_str;
-                    } else {
+                    } else { // The decimal point is after the first digit
                         for (int i = 0; i < pos; i++) {
                             cout << val_str[i];
                         }
@@ -83,22 +85,33 @@ void run_client() {
             } else { // Received something from STDIN
                 notify_packet packet;
 
+                // Reading the message
                 cin.getline(packet.message, MAX_MSG_LEN);
                 packet.len = strlen(packet.message) + 1;
 
+                // Checking if the message is valid
+                bool is_exit = strncmp(packet.message, "exit", 4) == 0;
+                bool is_subscribe = strncmp(packet.message, "subscribe", 9) == 0;
+                bool is_unsubscribe = strncmp(packet.message, "unsubscribe", 11) == 0;
+
+                // If the message is not valid, ignore it
+                if (!is_exit && !is_subscribe && !is_unsubscribe) {
+                    cout << "Invalid command.\n";
+                    continue;
+                }
+
+                // Sending the message to the server
                 send_all(sockfd, &packet, sizeof(notify_packet));
 
-                if (strncmp(packet.message, "exit", 4) == 0) {
+                if (is_exit) {
                     return;
-                } else if (strncmp(packet.message, "subscribe", 9) == 0) {
+                } else if (is_subscribe) {
                     cout << "Subscribed to topic.\n";
-                } else if (strncmp(packet.message, "unsubscribe", 11) == 0) {
+                } else if (is_unsubscribe) {
                     cout << "Unsubscribed from topic.\n";
                 }
             }
         }
-
-        if (exit_client) break;
     }
 }
 
@@ -116,7 +129,7 @@ int main(int argc, char *argv[]) {
     // ID
     strcpy(id, argv[1]);
 
-    // PORT
+    // Port
     rc = sscanf(argv[3], "%hu", &port);
     DIE(rc != 1, "Given port is invalid");
 
@@ -140,8 +153,7 @@ int main(int argc, char *argv[]) {
     rc = connect(sockfd, (sockaddr*)&serv_addr, sizeof(serv_addr));
     DIE(rc < 0, "connect");
 
-    // Running the client
-    run_client();
+    run_client(); // <====================
 
     // Closing the connection
     close(sockfd);

@@ -11,56 +11,53 @@ map<string, client> clients;
 
 void run_server() {
   vector<pollfd> poll_fds;
-  int num_clients = 3;
+
   int rc;
 
   rc = listen(listen_sock, MAX_FDS);
   DIE(rc < 0, "listen");
 
   // Adding the listener in the poll
-  poll_fds.push_back(pollfd());
-  poll_fds[0].fd = listen_sock;
-  poll_fds[0].events = POLLIN;
+  poll_fds.push_back({listen_sock, POLLIN, 0});
 
   // Adding the udp socket
-  poll_fds.push_back(pollfd());
-  poll_fds[1].fd = udp_sock;
-  poll_fds[1].events = POLLIN;
+  poll_fds.push_back({udp_sock, POLLIN, 0});
 
   // Also, adding the STDIN fd
-  poll_fds.push_back(pollfd());
-  poll_fds[2].fd = STDIN_FILENO;
-  poll_fds[2].events = POLLIN;
+  poll_fds.push_back({STDIN_FILENO, POLLIN, 0});
 
   // Here comes the funny business
   while (1) {
-    rc = poll(poll_fds.data(), num_clients, -1);
+    rc = poll(poll_fds.data(), poll_fds.size(), -1);
     DIE(rc < 0, "poll");
 
-    for (int i = 0; i < num_clients; i++) {
+    for (int i = 0; i < poll_fds.size(); i++) {
       if (!(poll_fds[i].revents & POLLIN)) continue;
 
       if (poll_fds[i].fd == STDIN_FILENO) { // Received a message at STDIN
         char msg[100];
         scanf("%s", msg);
 
+        // Checking if the message is "exit"
         if (strcmp(msg, "exit") == 0) {
           goto exit;
         } else {
-          exit(1);
+          printf("Unknown command.\n");
         }
       } else if (poll_fds[i].fd == listen_sock) { // A new connection
         sockaddr_in cli_addr;
         socklen_t cli_len = sizeof(cli_addr);
 
+        // Accepting the connection
         int newsockfd = accept(listen_sock, (sockaddr*)&cli_addr, &cli_len);
         DIE(newsockfd < 0, "accept");
 
+        // Receiving the client's ID
         char id[11];
-        recv(newsockfd, id, 11, 0);
+        recv_all(newsockfd, id, 11);
 
         map<string, client>::iterator j = clients.find(id);
-        if (j == clients.end()) { // Adding a new client
+        if (j == clients.end()) { // Adding a new client (that didn't connect before)
           client tmp_client;
           tmp_client.fd = newsockfd;
           strcpy(tmp_client.id, id);
@@ -69,16 +66,14 @@ void run_server() {
 
           poll_fds.push_back({newsockfd, POLLIN, 0});
 
-          num_clients++;
-
           printf("New client %s connected from %s:%d.\n", id, inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port));
-        } else if (j->second.fd == -1) {
+        } else if (j->second.fd == -1) { // Adding a new client (that connected before)
+          // Updating the client's fd to the new socket
           j->second.fd = newsockfd;
 
           poll_fds.push_back({newsockfd, POLLIN, 0});
 
-          num_clients++;
-
+          // Sending all stored packets
           while (!j->second.sf_queue.empty()) {
             tcp_packet tmp = j->second.sf_queue.front();
             j->second.sf_queue.pop();
@@ -88,32 +83,24 @@ void run_server() {
           }
 
           printf("New client %s connected from %s:%d.\n", id, inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port));
-        } else {
+        } else { // Client already connected
           printf("Client %s already connected.\n", id);
 
           close(newsockfd);
         }
       } else if (poll_fds[i].fd == udp_sock) { // Message from an UDP client
-        char buffer[2000];
-        memset(buffer, 0, 2000);
-
+        tcp_packet packet;
         sockaddr_in udp_client;
         socklen_t udp_len = sizeof(udp_client);
 
-        rc = recv(poll_fds[i].fd, buffer, 2000, 0);
+        // Receiving the packet
+        rc = recvfrom(poll_fds[i].fd, &packet.payload, sizeof(packet.payload), 0, (sockaddr*)&udp_client, &udp_len);
         DIE(rc < 0, "recvfrom");
 
-        udp_payload *msg = (udp_payload*)buffer;
-
-        tcp_packet tcp_msg;
-        memcpy(&tcp_msg.payload, msg, sizeof(udp_payload));
-
-        char topic[50];
-        strcpy(topic, buffer);
-
         for (auto j = clients.begin(); j != clients.end(); j++) {
-          map<string, bool>::iterator is_topic = j->second.topics.find(topic);
+          map<string, bool>::iterator is_topic = j->second.topics.find(packet.payload.topic);
 
+          // Checking if the client is subscribed to the topic
           if (is_topic == j->second.topics.end()) continue;
 
           if (j->second.fd == -1) {
@@ -121,9 +108,11 @@ void run_server() {
               continue;
             }
 
-            j->second.sf_queue.push(tcp_msg);
+            // Adding the packet to the queue if store and forward is enabled
+            j->second.sf_queue.push(packet);
           } else {
-            send_all(j->second.fd, &tcp_msg, sizeof(tcp_msg));
+            // Sending the packet to the client (if client is connected)
+            send_all(j->second.fd, &packet, sizeof(packet));
           }
         }
       } else { // Message from a TCP client
@@ -133,6 +122,7 @@ void run_server() {
         if (strncmp(msg.message, "exit", 4) == 0) { // exit command
           const char *id;
 
+          // Updating the client's fd to -1
           for (auto client : clients) {
             if (client.second.fd == poll_fds[i].fd) {
               clients[client.first].fd = -1;
@@ -141,17 +131,18 @@ void run_server() {
             }
           }
 
+          // Removing the client from the poll
           poll_fds.erase(poll_fds.begin() + i);
-
-          num_clients--;
 
           printf("Client %s disconnected.\n", id);
         } else if (strncmp(msg.message, "subscribe", 9) == 0) { // subscribe command
           char topic[50];
           int sf;
 
+          // Extracting the topic and the SF
           sscanf(msg.message, "%*s %s %d", topic, &sf);
 
+          // Adding the topic to the client's list
           for (auto j = clients.begin(); j != clients.end(); j++) {
             if (j->second.fd == poll_fds[i].fd) {
               clients[j->first].topics[topic] = sf;
@@ -161,8 +152,10 @@ void run_server() {
         } else if (strncmp(msg.message, "unsubscribe", 11) == 0) { // unsubscribe command
           char topic[50];
 
+          // Extracting the topic
           sscanf(msg.message, "%*s %s", topic);
 
+          // Removing the topic from the client's list
           for (auto j = clients.begin(); j != clients.end(); j++) {
             if (j->second.fd == poll_fds[i].fd) {
               clients[j->first].topics.erase(topic);
@@ -176,7 +169,7 @@ void run_server() {
 
 exit:
   // Closing all connections
-  for (int i = 3; i < num_clients; i++) {
+  for (int i = 3; i < poll_fds.size(); i++) {
     close(poll_fds[i].fd);
   }
 }
@@ -227,8 +220,9 @@ int main(int argc, char *argv[]) {
   rc = bind(listen_sock, (const sockaddr*)&serveraddr, sizeof(serveraddr));
   DIE(rc < 0, "tcp bind failed");
 
-  run_server();
+  run_server(); // <=====================
 
+  // Closing sockets
   close(listen_sock);
   close(udp_sock);
 
