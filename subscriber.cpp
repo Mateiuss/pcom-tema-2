@@ -21,6 +21,8 @@ void run_client() {
     poll_fds[1].fd = STDIN_FILENO;
     poll_fds[1].events = POLLIN;
 
+    bool exit_client = false;
+
     while (1) {
         rc = poll(poll_fds, 2, -1);
         DIE(rc < 0, "poll");
@@ -31,7 +33,12 @@ void run_client() {
             if (poll_fds[i].fd == sockfd) { // Received something from the server
                 tcp_packet packet;
 
-                recv_all(sockfd, &packet, sizeof(tcp_packet));
+                rc = recv_all(sockfd, &packet, sizeof(tcp_packet));
+
+                if (rc == 0) {
+                    exit_client = true;
+                    break;
+                }
 
                 printf("%s:%d - %s - ", inet_ntoa(packet.udp_client.sin_addr), packet.udp_client.sin_port, packet.payload.topic);
                 
@@ -96,6 +103,8 @@ void run_client() {
                 }
             }
         }
+
+        if (exit_client) break;
     }
 }
 

@@ -79,9 +79,19 @@ void run_server() {
 
           num_clients++;
 
+          while (!j->second.sf_queue.empty()) {
+            tcp_packet tmp = j->second.sf_queue.front();
+            j->second.sf_queue.pop();
+
+            rc = send_all(newsockfd, &tmp, sizeof(tcp_packet));
+            DIE(rc < 0, "send_all");
+          }
+
           printf("New client %s connected from %s:%d.\n", id, inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port));
         } else {
           printf("Client %s already connected.\n", id);
+
+          send(newsockfd, "exit", 0, 0);
 
           close(newsockfd);
         }
@@ -92,28 +102,16 @@ void run_server() {
         sockaddr_in udp_client;
         socklen_t udp_len = sizeof(udp_client);
 
-        // rc = recvfrom(udp_sock, buffer, 2000, 0, (sockaddr*)&udp_client, (socklen_t*)&udp_len);
         rc = recv(poll_fds[i].fd, buffer, 2000, 0);
         DIE(rc < 0, "recvfrom");
-
-        // if (rc == 0) continue;
 
         udp_payload *msg = (udp_payload*)buffer;
 
         tcp_packet tcp_msg;
-        // memcpy(&tcp_msg.udp_client, &udp_client, sizeof(udp_client));
         memcpy(&tcp_msg.payload, msg, sizeof(udp_payload));
 
         char topic[50];
         strcpy(topic, buffer);
-
-        // cout << "=================================================\n";
-        // for (auto c : clients) {
-        //   for (auto t : c.second.topics) {
-        //     cout << t.first << " " << t.second << "\n";
-        //   }
-        // }
-        // cout << "=================================================\n";
 
         for (auto j = clients.begin(); j != clients.end(); j++) {
           map<string, bool>::iterator is_topic = j->second.topics.find(topic);
@@ -135,8 +133,6 @@ void run_server() {
         notify_packet msg;
         recv_all(poll_fds[i].fd, &msg, sizeof(msg));
 
-        // cout << msg.len << " " << msg.message << "\n";
-
         if (strncmp(msg.message, "exit", 4) == 0) {
           const char *id;
 
@@ -156,8 +152,6 @@ void run_server() {
         } else if (strncmp(msg.message, "subscribe", 9) == 0) {
           char topic[50];
           int sf;
-
-          // cout<<topic<<" "<<sf<<"\n";
 
           sscanf(msg.message, "%*s %s %d", topic, &sf);
 
