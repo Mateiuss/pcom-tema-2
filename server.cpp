@@ -116,10 +116,14 @@ void run_server() {
           }
         }
       } else { // Message from a TCP client
-        notify_packet msg;
-        recv_all(poll_fds[i].fd, &msg, sizeof(msg));
+        notify_packet packet;
+        
+        uint8_t packet_len = 0;
+        recv_all(poll_fds[i].fd, &packet_len, sizeof(packet_len));
 
-        if (strncmp(msg.message, "exit", 4) == 0) { // exit command
+        recv_all(poll_fds[i].fd, &packet, packet_len);
+
+        if (strcmp(packet.command, "exit") == 0) { // Exit
           const char *id;
 
           // Updating the client's fd to -1
@@ -135,33 +139,22 @@ void run_server() {
           poll_fds.erase(poll_fds.begin() + i);
 
           printf("Client %s disconnected.\n", id);
-        } else if (strncmp(msg.message, "subscribe", 9) == 0) { // subscribe command
-          char topic[TOPIC_LEN];
-          int sf;
-
-          // Extracting the topic and the SF
-          sscanf(msg.message, "%*s %s %d", topic, &sf);
-
-          // Adding the topic to the client's list
+        } else if (strcmp(packet.command, "subscribe") == 0) { // Subscribe
           for (auto j = clients.begin(); j != clients.end(); j++) {
             if (j->second.fd == poll_fds[i].fd) {
-              clients[j->first].topics[topic] = sf;
+              clients[j->first].topics[packet.topic] = packet.sf;
               break;
             }
           }
-        } else if (strncmp(msg.message, "unsubscribe", 11) == 0) { // unsubscribe command
-          char topic[TOPIC_LEN];
-
-          // Extracting the topic
-          sscanf(msg.message, "%*s %s", topic);
-
-          // Removing the topic from the client's list
+        } else if (strcmp(packet.command, "unsubscribe") == 0) { // Unsubscribe
           for (auto j = clients.begin(); j != clients.end(); j++) {
             if (j->second.fd == poll_fds[i].fd) {
-              clients[j->first].topics.erase(topic);
+              clients[j->first].topics.erase(packet.topic);
               break;
             }
           }
+        } else { // Unknown command
+          printf("Unknown command.\n");
         }
       }
     }

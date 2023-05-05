@@ -19,7 +19,6 @@
 #include <cmath>
 
 #define MAX_FDS 2000
-#define MAX_MSG_LEN 64
 #define TOPIC_LEN 50
 #define PAYLOAD_LEN 1500
 
@@ -49,8 +48,9 @@ struct tcp_packet {
 
 // The info that the client sends through TCP
 struct notify_packet {
-  uint16_t len;
-  char message[MAX_MSG_LEN];
+  char command[12];
+  char topic[TOPIC_LEN];
+  uint8_t sf;
 };
 
 // The client structure

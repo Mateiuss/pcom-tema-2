@@ -85,30 +85,44 @@ void run_client() {
             } else { // Received something from STDIN
                 notify_packet packet;
 
-                // Reading the message
-                cin.getline(packet.message, MAX_MSG_LEN);
-                packet.len = strlen(packet.message) + 1;
+                cin >> packet.command;
 
-                // Checking if the message is valid
-                bool is_exit = strncmp(packet.message, "exit", 4) == 0;
-                bool is_subscribe = strncmp(packet.message, "subscribe", 9) == 0;
-                bool is_unsubscribe = strncmp(packet.message, "unsubscribe", 11) == 0;
+                if (strcmp(packet.command, "exit") == 0) {
+                    uint8_t packet_len = strlen(packet.command) + 1;
 
-                // If the message is not valid, ignore it
-                if (!is_exit && !is_subscribe && !is_unsubscribe) {
-                    cout << "Invalid command.\n";
-                    continue;
-                }
+                    send_all(sockfd, &packet_len, sizeof(uint8_t));
+                    send_all(sockfd, packet.command, packet_len);
 
-                // Sending the message to the server
-                send_all(sockfd, &packet, sizeof(notify_packet));
-
-                if (is_exit) {
                     return;
-                } else if (is_subscribe) {
+                } else if (strcmp(packet.command, "subscribe") == 0) {
+                    cin >> packet.topic;
+                    cin >> packet.sf;
+
+                    packet.sf -= '0';
+
+                    // Check for invalid SF
+                    if (packet.sf != 0 && packet.sf != 1) {
+                        cout << "Invalid SF\n";
+                        continue;
+                    }
+
+                    uint8_t packet_len = sizeof(packet);
+
+                    send_all(sockfd, &packet_len, sizeof(uint8_t));
+                    send_all(sockfd, &packet, packet_len);
+
                     cout << "Subscribed to topic.\n";
-                } else if (is_unsubscribe) {
+                } else if (strcmp(packet.command, "unsubscribe") == 0) {
+                    cin >> packet.topic;
+
+                    uint8_t packet_len = sizeof(packet.command) + strlen(packet.topic) + 2;
+
+                    send_all(sockfd, &packet_len, sizeof(uint8_t));
+                    send_all(sockfd, &packet, packet_len);
+
                     cout << "Unsubscribed from topic.\n";
+                } else {
+                    cout << "Invalid command\n";
                 }
             }
         }
