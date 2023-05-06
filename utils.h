@@ -20,7 +20,9 @@
 
 #define MAX_FDS 2000
 #define TOPIC_LEN 50
-#define PAYLOAD_LEN 1500
+#define PAYLOAD_LEN 1501
+#define ID_LEN 11
+#define COMMAND_LEN 12
 
 #define DIE(assertion, call_description)                                       \
   do {                                                                         \
@@ -48,14 +50,14 @@ struct tcp_packet {
 
 // The info that the client sends through TCP
 struct notify_packet {
-  char command[12];
+  char command[COMMAND_LEN];
   char topic[TOPIC_LEN];
   uint8_t sf;
 };
 
 // The client structure
 struct client {
-  char id[11];
+  char id[ID_LEN];
   int fd;
   map<string, bool> topics;
   queue<tcp_packet> sf_queue;

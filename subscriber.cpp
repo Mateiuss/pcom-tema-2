@@ -4,11 +4,11 @@ using namespace std;
 
 int sockfd = -1;
 uint16_t port;
-char id[11];
+char id[ID_LEN];
 
 void run_client() {
     // Sending the client's ID
-    send_all(sockfd, id, 11);
+    send_all(sockfd, id, ID_LEN);
 
     int rc;
 

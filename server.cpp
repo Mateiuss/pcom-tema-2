@@ -22,13 +22,7 @@ int send_message(int sockfd, tcp_packet* packet) {
   } else if (packet->payload.tip_date == 2) {
     msg_len = sizeof(tcp_packet) - PAYLOAD_LEN + sizeof(uint8_t) + sizeof(uint32_t) + sizeof(uint8_t);
   } else if (packet->payload.tip_date == 3) {
-    size_t len = strlen(packet->payload.payload);
-
-    // If the message is not occupying the entire payload, we need to add the null terminator
-    if (len != PAYLOAD_LEN) {
-      len++;
-    }
-    msg_len = sizeof(tcp_packet) - PAYLOAD_LEN + len;
+    msg_len = sizeof(tcp_packet) - PAYLOAD_LEN + strlen(packet->payload.payload) + 1;
   }
 
   // Sending the length of the message, than the message itself
@@ -82,8 +76,8 @@ void run_server() {
         DIE(newsockfd < 0, "accept");
 
         // Receiving the client's ID
-        char id[11];
-        recv_all(newsockfd, id, 11);
+        char id[ID_LEN];
+        recv_all(newsockfd, id, ID_LEN);
 
         map<string, client>::iterator j = clients.find(id);
         if (j == clients.end()) { // Adding a new client (that didn't connect before)
@@ -125,10 +119,8 @@ void run_server() {
         rc = recvfrom(poll_fds[i].fd, &packet.payload, sizeof(packet.payload), 0, (sockaddr*)&udp_client, &udp_len);
         DIE(rc < 0, "recvfrom");
 
-        // If the message is shorter than the maximum length, we need to add a null terminator
-        if (rc != sizeof(tcp_packet)) {
-          packet.payload.topic[rc] = 0;
-        } 
+        // Adding null terminator to the end of the payload (in case if it's a string) 
+        packet.payload.topic[rc] = 0;
 
         for (auto j = clients.begin(); j != clients.end(); j++) {
           map<string, bool>::iterator is_topic = j->second.topics.find(packet.payload.topic);
