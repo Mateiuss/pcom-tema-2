@@ -78,6 +78,7 @@ entitati (server si client), am venit cu urmatoarea conventie:
 
 - Inainte de a trimite un pachet (fie el un notify_packet sau tcp_packet), mai
 intai se calculeaza si se trimite numarul de octeti utili ai pachetului (packet_len)
-si abia dupa se trimit packet_len octeti catre destinatie
+si abia dupa se trimit packet_len octeti din pachet catre destinatie
 
-- Astfel, 
+- Pentru trimiterea si primirea pachetelor TCP m-am folosit de functiile
+recv_all si send_all din cadrul laboratorului 7
