@@ -30,10 +30,13 @@ void run_client() {
 
             if (poll_fds[i].fd == sockfd) { // Received something from the server
                 tcp_packet packet;
+                uint16_t packet_len = 0;
 
-                rc = recv_all(sockfd, &packet, sizeof(tcp_packet));
+                rc = recv_all(sockfd, &packet_len, sizeof(packet_len));
 
                 if (rc == 0) return;
+
+                rc = recv_all(sockfd, &packet, packet_len);
 
                 printf("%s:%d - %s - ", inet_ntoa(packet.udp_client.sin_addr), packet.udp_client.sin_port, packet.payload.topic);
                 

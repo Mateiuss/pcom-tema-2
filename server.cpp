@@ -9,6 +9,27 @@ int listen_sock;
 
 map<string, client> clients;
 
+int send_message(int sockfd, tcp_packet* packet) {
+  int rc = 0;
+
+  uint16_t msg_len = 0;
+
+  if (packet->payload.tip_date == 0) {
+    msg_len = sizeof(tcp_packet) - PAYLOAD_LEN + sizeof(uint8_t) + sizeof(uint32_t);
+  } else if (packet->payload.tip_date == 1) {
+    msg_len = sizeof(tcp_packet) - PAYLOAD_LEN + sizeof(uint16_t);
+  } else if (packet->payload.tip_date == 2) {
+    msg_len = sizeof(tcp_packet) - PAYLOAD_LEN + sizeof(uint8_t) + sizeof(uint32_t) + sizeof(uint8_t);
+  } else if (packet->payload.tip_date == 3) {
+    msg_len = sizeof(tcp_packet) - PAYLOAD_LEN + strlen(packet->payload.payload) + 2;
+  }
+
+  rc += send_all(sockfd, &msg_len, sizeof(msg_len));
+  rc += send_all(sockfd, packet, msg_len);
+
+  return rc;
+}
+
 void run_server() {
   vector<pollfd> poll_fds;
 
@@ -78,8 +99,7 @@ void run_server() {
             tcp_packet tmp = j->second.sf_queue.front();
             j->second.sf_queue.pop();
 
-            rc = send_all(newsockfd, &tmp, sizeof(tcp_packet));
-            DIE(rc < 0, "send_all");
+            send_message(j->second.fd, &tmp);
           }
 
           printf("New client %s connected from %s:%d.\n", id, inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port));
@@ -97,6 +117,11 @@ void run_server() {
         rc = recvfrom(poll_fds[i].fd, &packet.payload, sizeof(packet.payload), 0, (sockaddr*)&udp_client, &udp_len);
         DIE(rc < 0, "recvfrom");
 
+        // If the message is shorter than the maximum length, we need to add a null terminator
+        if (rc != sizeof(tcp_packet)) {
+          packet.payload.topic[rc] = 0;
+        } 
+
         for (auto j = clients.begin(); j != clients.end(); j++) {
           map<string, bool>::iterator is_topic = j->second.topics.find(packet.payload.topic);
 
@@ -112,7 +137,7 @@ void run_server() {
             j->second.sf_queue.push(packet);
           } else {
             // Sending the packet to the client (if client is connected)
-            send_all(j->second.fd, &packet, sizeof(packet));
+            send_message(j->second.fd, &packet);
           }
         }
       } else { // Message from a TCP client
