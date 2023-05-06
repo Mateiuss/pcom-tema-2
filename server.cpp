@@ -9,6 +9,7 @@ int listen_sock;
 
 map<string, client> clients;
 
+// Sending bytes according to the data type
 int send_message(int sockfd, tcp_packet* packet) {
   int rc = 0;
 
@@ -21,9 +22,16 @@ int send_message(int sockfd, tcp_packet* packet) {
   } else if (packet->payload.tip_date == 2) {
     msg_len = sizeof(tcp_packet) - PAYLOAD_LEN + sizeof(uint8_t) + sizeof(uint32_t) + sizeof(uint8_t);
   } else if (packet->payload.tip_date == 3) {
-    msg_len = sizeof(tcp_packet) - PAYLOAD_LEN + strlen(packet->payload.payload) + 2;
+    size_t len = strlen(packet->payload.payload);
+
+    // If the message is not occupying the entire payload, we need to add the null terminator
+    if (len != PAYLOAD_LEN) {
+      len++;
+    }
+    msg_len = sizeof(tcp_packet) - PAYLOAD_LEN + len;
   }
 
+  // Sending the length of the message, than the message itself
   rc += send_all(sockfd, &msg_len, sizeof(msg_len));
   rc += send_all(sockfd, packet, msg_len);
 
